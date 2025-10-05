@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Interactive Dashboard — Multi-Excel (Country • Indicator • Year • Unit • Value)</title>
+
+  <!-- Plotly for charts -->
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <!-- SheetJS for reading .xlsx in-browser -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.20.1/dist/xlsx.full.min.js"></script>
+  <!-- DataTables for interactive table -->
+  <link rel="stylesheet" href="https://cdn.datatables.net/2.0.7/css/dataTables.dataTables.min.css"/>
+  <script src="https://cdn.datatables.net/2.0.7/js/dataTables.min.js"></script>
+
+  <style>
+    :root { --bg:#0b1020; --card:#121833; --muted:#96a0c2; --accent:#36c690; --text:#f3f5ff; }
+    html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,Segoe UI,Roboto,Arial}
+    a{color:var(--accent)}
+    header{padding:16px 20px;background:#0d1430;border-bottom:1px solid #223}
+    header h1{margin:0;font-size:20px}
+    .wrap{display:grid;grid-template-columns:320px 1fr;gap:16px;min-height:calc(100vh - 60px)}
+    aside{padding:16px;border-right:1px solid #223;background:#0d1430}
+    .main{padding:16px}
+    .cards{display:grid;grid-template-columns:1fr;gap:16px}
+    .card{background:var(--card);border:1px solid #223;border-radius:14px;padding:14px}
+    .card h3{margin:0 0 10px}
+    .ctrl{margin-bottom:14px}
+    .ctrl label{display:block;margin:0 0 6px;color:var(--muted);font-size:12px}
+    .ctrl select,.ctrl input,.ctrl button{width:100%;padding:8px 10px;background:#0b1128;border:1px solid #223;color:var(--text);border-radius:10px}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .sources{font-size:13px;color:var(--muted)}
+    .pill{display:inline-block;padding:4px 8px;margin:3px;border:1px solid #2a355a;border-radius:999px;background:#0b1128}
+    table.dataTable{width:100%!important}
+    footer{padding:12px 16px;color:var(--muted);border-top:1px solid #223}
+  </style>
+</head>
+<body>
+  <header><h1>Interactive Dashboard (GitHub Pages • Excel)</h1></header>
+
+  <div class="wrap">
+    <aside>
+      <div class="ctrl">
+        <label>Datasets (from <code>data/catalog.json</code>)</label>
+        <select id="datasetSel" multiple size="10"></select>
+        <small style="color:var(--muted)">Tip: ⌘/Ctrl-click to multi-select</small>
+      </div>
+
+      <div class="ctrl row">
+        <div>
+          <label>Chart type</label>
+          <select id="chartType">
+            <option value="bar">Bar</option>
+            <option value="line">Line</option>
+            <option value="area">Area</option>
+            <option value="pie">Pie</option>
+          </select>
+        </div>
+        <div>
+          <label>Aggregation</label>
+          <select id="agg">
+            <option value="sum">Sum</option>
+            <option value="mean">Mean</option>
+            <option value="last">Last (by Year)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="ctrl">
+        <label>X axis (for bar/line/area)</label>
+        <select id="xCol">
+          <option value="Year">Year</option>
+          <option value="Country">Country</option>
+          <option value="Indicator">Indicator</option>
+          <option value="Unit">Unit</option>
+        </select>
+      </div>
+
+      <div class="ctrl">
+        <label>Series / Color (optional)</label>
+        <select id="colorCol">
+          <option value="">— none —</option>
+          <option value="Country">Country</option>
+          <option value="Indicator">Indicator</option>
+          <option value="Unit">Unit</option>
+        </select>
+      </div>
+
+      <div class="ctrl">
+        <label>Pie: Label</label>
+        <select id="pieLabelCol">
+          <option value="Country">Country</option>
+          <option value="Indicator">Indicator</option>
+          <option value="Unit">Unit</option>
+        </select>
+      </div>
+      <div class="ctrl">
+        <label>Pie: Value</label>
+        <select id="pieValueCol">
+          <option value="Value">Value</option>
+        </select>
+      </div>
+
+      <div class="ctrl">
+        <label>Filter: Country</label>
+        <select id="fCountry" multiple size="6"></select>
+      </div>
+      <div class="ctrl">
+        <label>Filter: Indicator</label>
+        <select id="fIndicator" multiple size="6"></select>
+      </div>
+      <div class="ctrl">
+        <label>Filter: Unit</label>
+        <select id="fUnit" multiple size="4"></select>
+      </div>
+      <div class="ctrl">
+        <label>Filter: Year (inclusive)</label>
+        <div class="row">
+          <input id="yearMin" type="number" placeholder="min"/>
+          <input id="yearMax" type="number" placeholder="max"/>
+        </div>
+      </div>
+
+      <div class="ctrl">
+        <button id="applyBtn" style="background:var(--accent);border:0;color:#04151f;font-weight:700">Apply</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="cards">
+        <section class="card">
+          <h3>Chart</h3>
+          <div id="chart" style="height:430px"></div>
+        </section>
+
+        <section class="card">
+          <h3>Data Table</h3>
+          <table id="dataTable" class="display"></table>
+        </section>
+
+        <section class="card">
+          <h3>Sources in Current View</h3>
+          <div id="sources" class="sources"></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <footer>
+    Expects Excel headers: <code>Country</code>, <code>Indicator</code>, <code>Year</code>, <code>Unit</code>, <code>Value</code>.
+    Files are listed in <code>data/catalog.json</code> (see sample at end of this HTML).
+  </footer>
+
+  <script>
+    const CATALOG_URL = 'data/catalog.json';
+
+    let catalog = [];     // [{path, topic?}]
+    let allRows = [];     // combined rows
+    let dt = null;
+
+    const uniq = arr => Array.from(new Set(arr.filter(v => v!==null && v!==undefined && v!=='')));
+
+    function topicFromPath(p){
+      const n = p.split('/').pop();
+      return n.replace(/\.xlsx$/i,'');
+    }
+
+    async function loadCatalog(){
+      const res = await fetch(CATALOG_URL);
+      if(!res.ok){
+        throw new Error('Missing data/catalog.json. Create it to list your files.');
+      }
+      const js = await res.json();
+      if(!Array.isArray(js)) throw new Error('catalog.json must be an array');
+      catalog = js.map(it => ({ path: it.path, topic: it.topic || topicFromPath(it.path) }));
+      const dsSel = document.getElementById('datasetSel');
+      dsSel.innerHTML = '';
+      catalog.forEach((it, idx) => {
+        const o = document.createElement('option');
+        o.value = String(idx);
+        o.textContent = it.topic;
+        dsSel.appendChild(o);
+      });
+      // select all by default
+      for (let i=0;i<dsSel.options.length;i++){ dsSel.options[i].selected = true; }
+    }
+
+    async function readXlsx(path, topic){
+      const res = await fetch(path);
+      if(!res.ok) throw new Error(`Failed to fetch ${path}`);
+      const ab = await res.arrayBuffer();
+      const wb = XLSX.read(ab, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+
+      // Normalize & coerce types
+      return rows.map(r => ({
+        Country:   r.Country,
+        Indicator: r.Indicator,
+        Year:      Number(r.Year),
+        Unit:      r.Unit,
+        Value:     (r.Value === '' || r.Value === null) ? null : Number(r.Value),
+        source_file: path.split('/').pop(),
+        topic
+      }));
+    }
+
+    async function loadSelected(){
+      const dsSel = document.getElementById('datasetSel');
+      const idxs = Array.from(dsSel.selectedOptions).map(o => Number(o.value));
+      const picks = catalog.filter((_,i)=>idxs.includes(i));
+      const chunks = await Promise.all(picks.map(it => readXlsx(it.path, it.topic)));
+      allRows = chunks.flat();
+      return allRows;
+    }
+
+    function populateFilters(rows){
+      const ctry = document.getElementById('fCountry');
+      const ind  = document.getElementById('fIndicator');
+      const unit = document.getElementById('fUnit');
+
+      const countries = uniq(rows.map(r=>r.Country)).sort();
+      const indicators= uniq(rows.map(r=>r.Indicator)).sort();
+      const units     = uniq(rows.map(r=>r.Unit)).sort();
+      const minY = Math.min(...rows.map(r=>r.Year).filter(Number.isFinite));
+      const maxY = Math.max(...rows.map(r=>r.Year).filter(Number.isFinite));
+
+      function fill(sel, values){
+        sel.innerHTML = '';
+        values.forEach(v => {
+          const o = document.createElement('option');
+          o.value = v; o.textContent = v;
+          sel.appendChild(o);
+        });
+      }
+      fill(ctry, countries);
+      fill(ind, indicators);
+      fill(unit, units);
+
+      document.getElementById('yearMin').value = Number.isFinite(minY) ? minY : '';
+      document.getElementById('yearMax').value = Number.isFinite(maxY) ? maxY : '';
+    }
+
+    function applyFilters(rows){
+      const pick = (selId) =>
+        Array.from(document.getElementById(selId).selectedOptions).map(o=>o.value);
+
+      const fC = pick('fCountry');
+      const fI = pick('fIndicator');
+      const fU = pick('fUnit');
+      const yMin = Number(document.getElementById('yearMin').value);
+      const yMax = Number(document.getElementById('yearMax').value);
+
+      return rows.filter(r => {
+        if (fC.length && !fC.includes(String(r.Country))) return false;
+        if (fI.length && !fI.includes(String(r.Indicator))) return false;
+        if (fU.length && !fU.includes(String(r.Unit))) return false;
+        if (Number.isFinite(yMin) && r.Year < yMin) return false;
+        if (Number.isFinite(yMax) && r.Year > yMax) return false;
+        return true;
+      });
+    }
+
+    function aggregate(rows, xCol, colorCol, agg){
+      // Returns array of traces-ready objects: {keyX, keyC, y}
+      const key = (r) => `${r[xCol]}||${colorCol? r[colorCol] : ''}`;
+      const map = new Map();
+      for (const r of rows){
+        const k = key(r);
+        let obj = map.get(k);
+        if (!obj){
+          obj = { x: r[xCol], c: colorCol ? r[colorCol] : null, vals: [], years: [] };
+          map.set(k, obj);
+        }
+        if (r.Value !== null && !isNaN(r.Value)){
+          obj.vals.push(r.Value);
+          obj.years.push(r.Year);
+        }
+      }
+      const out = [];
+      map.forEach(o => {
+        let y = null;
+        if (o.vals.length){
+          if (agg === 'sum')  y = o.vals.reduce((a,b)=>a+b,0);
+          if (agg === 'mean') y = o.vals.reduce((a,b)=>a+b,0) / o.vals.length;
+          if (agg === 'last'){
+            // pick the value at the largest year for this group
+            const idx = o.years.indexOf(Math.max(...o.years));
+            y = o.vals[idx];
+          }
+        }
+        out.push({ x:o.x, c:o.c, y });
+      });
+      return out;
+    }
+
+    function renderChart(rows){
+      const type = document.getElementById('chartType').value;
+      const agg  = document.getElementById('agg').value;
+
+      if (type === 'pie'){
+        const labelCol = document.getElementById('pieLabelCol').value; // Country/Indicator/Unit
+        // Pie always aggregates Value
+        const groups = {};
+        rows.forEach(r => {
+          const k = String(r[labelCol]);
+          const v = Number(r.Value);
+          if (!isNaN(v)) groups[k] = (groups[k] || 0) + v;
+        });
+        const labels = Object.keys(groups);
+        const values = Object.values(groups);
+        Plotly.newPlot('chart', [{
+          type:'pie', labels, values, textinfo:'label+percent',
+          hovertemplate: '%{label}: %{value}<extra></extra>'
+        }], {
+          paper_bgcolor:'#121833', plot_bgcolor:'#121833', font:{color:'#f3f5ff'}
+        }, {displayModeBar:true, responsive:true});
+        return;
+      }
+
+      // bar / line / area
+      const xCol = document.getElementById('xCol').value;     // Year/Country/Indicator/Unit
+      const colorCol = document.getElementById('colorCol').value || null;
+
+      const aggRows = aggregate(rows, xCol, colorCol, agg);
+
+      let traces;
+      if (colorCol){
+        const cats = uniq(aggRows.map(r => r.c));
+        traces = cats.map(cat => {
+          const subset = aggRows.filter(r => r.c === cat);
+          return {
+            name: cat, x: subset.map(r=>r.x), y: subset.map(r=>r.y),
+            type: (type==='bar' ? 'bar' : 'scatter'),
+            mode: (type==='bar' ? undefined : 'lines+markers'),
+            fill: (type==='area' ? 'tozeroy' : undefined),
+            hovertemplate: `${xCol}=%{x}<br>${agg} Value=%{y}<extra>${colorCol}=${cat}</extra>`
+          };
+        });
+      } else {
+        traces = [{
+          x: aggRows.map(r=>r.x), y: aggRows.map(r=>r.y),
+          type: (type==='bar' ? 'bar' : 'scatter'),
+          mode: (type==='bar' ? undefined : 'lines+markers'),
+          fill: (type==='area' ? 'tozeroy' : undefined),
+          hovertemplate: `${xCol}=%{x}<br>${agg} Value=%{y}<extra></extra>`
+        }];
+      }
+
+      Plotly.newPlot('chart', traces, {
+        paper_bgcolor:'#121833', plot_bgcolor:'#121833', font:{color:'#f3f5ff'},
+        xaxis:{ title:xCol, automargin:true },
+        yaxis:{ title:`${agg} of Value`, automargin:true },
+        barmode: colorCol ? 'group' : 'relative',
+        margin:{t:30,r:20,b:50,l:60}
+      }, {displayModeBar:true, responsive:true});
+    }
+
+    function renderTable(rows){
+      const table = document.getElementById('dataTable');
+      if (dt){ dt.destroy(); dt = null; table.innerHTML=''; }
+      if (!rows.length) return;
+
+      const headers = ['Country','Indicator','Year','Unit','Value','source_file','topic'];
+      const thead = document.createElement('thead');
+      const thr = document.createElement('tr');
+      headers.forEach(h => { const th=document.createElement('th'); th.textContent=h; thr.appendChild(th); });
+      thead.appendChild(thr);
+      table.appendChild(thead);
+
+      const tbody = document.createElement('tbody');
+      rows.forEach(r => {
+        const tr = document.createElement('tr');
+        headers.forEach(h => {
+          const td = document.createElement('td');
+          td.textContent = r[h] ?? '';
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+
+      dt = new DataTable(table, { paging:true, pageLength:10, searchable:true, fixedHeight:false });
+    }
+
+    function renderSources(rows){
+      const box = document.getElementById('sources');
+      const files = uniq(rows.map(r=>r.source_file));
+      box.innerHTML = files.map(f=>`<span class="pill">${f}</span>`).join('');
+    }
+
+    async function refreshAll(){
+      await loadSelected();
+      populateFilters(allRows);
+      const filtered = applyFilters(allRows);
+      renderChart(filtered);
+      renderTable(filtered);
+      renderSources(filtered);
+    }
+
+    // Init
+    (async function(){
+      try {
+        await loadCatalog();
+        await refreshAll();
+      } catch(e){
+        console.error(e);
+        alert(e.message);
+      }
+    })();
+
+    // Events
+    document.getElementById('applyBtn').addEventListener('click', async () => {
+      // Re-filter (no need to re-load unless datasets changed)
+      const filtered = applyFilters(allRows);
+      renderChart(filtered);
+      renderTable(filtered);
+      renderSources(filtered);
+    });
+
+    // Re-load when dataset selection changes
+    document.getElementById('datasetSel').addEventListener('change', refreshAll);
+  </script>
+
+  <!--
+  ========================= Sample data/catalog.json =========================
+
+  Create a file at: data/catalog.json   with contents similar to:
+
+  [
+    { "path": "data/AG.LND.EL5M.UR.ZS.xlsx" },
+    { "path": "data/AG.LND.TOTL.UR.K2.xlsx" },
+    { "path": "data/EN.POP.EL5M.UR.ZS.xlsx" },
+    { "path": "data/ER.GDP.FWTL.M3.KD.xlsx" },
+    { "path": "data/FP.WPI.TOTL.xlsx" }
+  ]
+
+  You can add all your uploaded Excel files; topic is auto-derived from filename.
+
+  ============================================================================
+  -->
+</body>
+</html>
