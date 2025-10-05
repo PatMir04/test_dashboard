@@ -1,128 +1,99 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Interactive Dashboard — Multi-Excel (Country • Indicator • Year • Unit • Value)</title>
-
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Multi-Excel + World Bank Dashboard (Static, GitHub Pages)</title>
   <!-- Plotly for charts -->
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-  <!-- SheetJS for reading .xlsx in-browser -->
+  <!-- SheetJS to read .xlsx directly in the browser -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.20.1/dist/xlsx.full.min.js"></script>
-  <!-- DataTables for interactive table -->
-  <link rel="stylesheet" href="https://cdn.datatables.net/2.0.7/css/dataTables.dataTables.min.css"/>
+  <!-- DataTables for interactive tables -->
+  <link rel="stylesheet" href="https://cdn.datatables.net/2.0.7/css/dataTables.dataTables.min.css" />
   <script src="https://cdn.datatables.net/2.0.7/js/dataTables.min.js"></script>
-
+  <!-- Simple, clean styling -->
   <style>
     :root { --bg:#0b1020; --card:#121833; --muted:#96a0c2; --accent:#36c690; --text:#f3f5ff; }
-    html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,Segoe UI,Roboto,Arial}
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,Segoe UI,Roboto,Arial}
     a{color:var(--accent)}
-    header{padding:16px 20px;background:#0d1430;border-bottom:1px solid #223}
-    header h1{margin:0;font-size:20px}
-    .wrap{display:grid;grid-template-columns:320px 1fr;gap:16px;min-height:calc(100vh - 60px)}
-    aside{padding:16px;border-right:1px solid #223;background:#0d1430}
+    .wrap{display:grid;grid-template-columns:300px 1fr;gap:16px;min-height:100vh}
+    header{grid-column:1/-1;padding:18px 22px;background:#0d1430;border-bottom:1px solid #223}
+    header h1{margin:0;font-size:20px;letter-spacing:.2px}
+    .side{padding:16px;border-right:1px solid #223;background:#0d1430}
+    .side h2{margin:6px 0 12px;font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
+    .ctrl{margin-bottom:14px}
+    .ctrl label{display:block;margin-bottom:6px;color:var(--muted);font-size:12px}
+    .ctrl select,.ctrl input{width:100%;padding:8px 10px;background:#0b1128;border:1px solid #223;color:var(--text);border-radius:10px}
+    .ctrl .hint{font-size:11px;color:#aab3d8;margin-top:6px}
     .main{padding:16px}
     .cards{display:grid;grid-template-columns:1fr;gap:16px}
     .card{background:var(--card);border:1px solid #223;border-radius:14px;padding:14px}
-    .card h3{margin:0 0 10px}
-    .ctrl{margin-bottom:14px}
-    .ctrl label{display:block;margin:0 0 6px;color:var(--muted);font-size:12px}
-    .ctrl select,.ctrl input,.ctrl button{width:100%;padding:8px 10px;background:#0b1128;border:1px solid #223;color:var(--text);border-radius:10px}
-    .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .card h3{margin:0 0 10px;font-size:16px}
     .sources{font-size:13px;color:var(--muted)}
     .pill{display:inline-block;padding:4px 8px;margin:3px;border:1px solid #2a355a;border-radius:999px;background:#0b1128}
+    .flex{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+    footer{grid-column:1/-1;padding:16px 22px;color:var(--muted);border-top:1px solid #223}
     table.dataTable{width:100%!important}
-    footer{padding:12px 16px;color:var(--muted);border-top:1px solid #223}
   </style>
+  <!-- Pako for gzip decompression (for .jsonl.gz) -->
+  <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
 </head>
 <body>
-  <header><h1>Interactive Dashboard (GitHub Pages • Excel)</h1></header>
-
   <div class="wrap">
-    <aside>
-      <div class="ctrl">
-        <label>Datasets (from <code>data/catalog.json</code>)</label>
-        <select id="datasetSel" multiple size="10"></select>
-        <small style="color:var(--muted)">Tip: ⌘/Ctrl-click to multi-select</small>
-      </div>
+    <header>
+      <h1>Interactive Dashboard from Multiple Excel/CSV + World Bank <span style="color:var(--muted);font-weight:400">(Static • GitHub Pages)</span></h1>
+    </header>
 
-      <div class="ctrl row">
-        <div>
-          <label>Chart type</label>
-          <select id="chartType">
-            <option value="bar">Bar</option>
-            <option value="line">Line</option>
-            <option value="area">Area</option>
-            <option value="pie">Pie</option>
-          </select>
-        </div>
-        <div>
-          <label>Aggregation</label>
-          <select id="agg">
-            <option value="sum">Sum</option>
-            <option value="mean">Mean</option>
-            <option value="last">Last (by Year)</option>
-          </select>
-        </div>
+    <aside class="side">
+      <h2>Data & Filters</h2>
+      <div class="ctrl">
+        <label for="datasetSel">Datasets (topics)</label>
+        <select id="datasetSel" multiple size="8"></select>
+        <div class="hint">Hold Ctrl/⌘ to select multiple. Defined in <code>data/catalog.json</code>.</div>
       </div>
 
       <div class="ctrl">
-        <label>X axis (for bar/line/area)</label>
-        <select id="xCol">
-          <option value="Year">Year</option>
-          <option value="Country">Country</option>
-          <option value="Indicator">Indicator</option>
-          <option value="Unit">Unit</option>
-        </select>
+        <label for="filterCol">Filter column</label>
+        <select id="filterCol"></select>
+      </div>
+      <div class="ctrl">
+        <label for="filterVals">Filter values</label>
+        <select id="filterVals" multiple size="6"></select>
       </div>
 
+      <h2>Chart</h2>
       <div class="ctrl">
-        <label>Series / Color (optional)</label>
-        <select id="colorCol">
-          <option value="">— none —</option>
-          <option value="Country">Country</option>
-          <option value="Indicator">Indicator</option>
-          <option value="Unit">Unit</option>
-        </select>
-      </div>
-
-      <div class="ctrl">
-        <label>Pie: Label</label>
-        <select id="pieLabelCol">
-          <option value="Country">Country</option>
-          <option value="Indicator">Indicator</option>
-          <option value="Unit">Unit</option>
+        <label for="chartType">Chart type</label>
+        <select id="chartType">
+          <option value="bar">Bar</option>
+          <option value="line">Line</option>
+          <option value="area">Area</option>
+          <option value="pie">Pie</option>
         </select>
       </div>
       <div class="ctrl">
-        <label>Pie: Value</label>
-        <select id="pieValueCol">
-          <option value="Value">Value</option>
-        </select>
+        <label for="xCol">X column (bar/line/area)</label>
+        <select id="xCol"></select>
+      </div>
+      <div class="ctrl">
+        <label for="yCol">Y column (numeric)</label>
+        <select id="yCol"></select>
+      </div>
+      <div class="ctrl">
+        <label for="colorCol">Series/Color (optional)</label>
+        <select id="colorCol"></select>
+      </div>
+      <div class="ctrl">
+        <label for="pieLabelCol">Pie label column</label>
+        <select id="pieLabelCol"></select>
+      </div>
+      <div class="ctrl">
+        <label for="pieValueCol">Pie value column (numeric)</label>
+        <select id="pieValueCol"></select>
       </div>
 
       <div class="ctrl">
-        <label>Filter: Country</label>
-        <select id="fCountry" multiple size="6"></select>
-      </div>
-      <div class="ctrl">
-        <label>Filter: Indicator</label>
-        <select id="fIndicator" multiple size="6"></select>
-      </div>
-      <div class="ctrl">
-        <label>Filter: Unit</label>
-        <select id="fUnit" multiple size="4"></select>
-      </div>
-      <div class="ctrl">
-        <label>Filter: Year (inclusive)</label>
-        <div class="row">
-          <input id="yearMin" type="number" placeholder="min"/>
-          <input id="yearMax" type="number" placeholder="max"/>
-        </div>
-      </div>
-
-      <div class="ctrl">
-        <button id="applyBtn" style="background:var(--accent);border:0;color:#04151f;font-weight:700">Apply</button>
+        <button id="applyBtn" style="width:100%;padding:10px;border-radius:10px;background:var(--accent);border:0;color:#04151f;font-weight:700">Apply</button>
       </div>
     </aside>
 
@@ -130,257 +101,245 @@
       <div class="cards">
         <section class="card">
           <h3>Chart</h3>
-          <div id="chart" style="height:430px"></div>
+          <div id="chart" style="height:420px"></div>
         </section>
-
         <section class="card">
           <h3>Data Table</h3>
-          <table id="dataTable" class="display"></table>
+          <table id="dataTable" class="display" style="width:100%"></table>
         </section>
-
         <section class="card">
           <h3>Sources in Current View</h3>
           <div id="sources" class="sources"></div>
         </section>
       </div>
     </main>
+
+    <footer>
+      <div>How it works: we fetch <code>data/catalog.json</code>, then download each listed <code>.xlsx</code>/<code>.csv</code> file <em>or</em> pull series from the World Bank API. We combine them (headers should match for local files), and add provenance fields <code>source_file</code> and <code>topic</code>. No server needed.</div>
+    </footer>
   </div>
 
-  <footer>
-    Expects Excel headers: <code>Country</code>, <code>Indicator</code>, <code>Year</code>, <code>Unit</code>, <code>Value</code>.
-    Files are listed in <code>data/catalog.json</code> (see sample at end of this HTML).
-  </footer>
-
   <script>
-    const CATALOG_URL = 'data/catalog.json';
+    // ---- Configuration ----
+    const CATALOG_URL = 'data/catalog.json'; // see sample below
 
-    let catalog = [];     // [{path, topic?}]
-    let allRows = [];     // combined rows
-    let dt = null;
+    // ---- Globals ----
+    let catalog = [];
+    let combined = [];      // all rows across files
+    let dt = null;          // DataTable instance
 
-    const uniq = arr => Array.from(new Set(arr.filter(v => v!==null && v!==undefined && v!=='')));
+    // Utility: unique values in array
+    const uniq = arr => Array.from(new Set(arr.filter(v => v !== undefined && v !== null)));
 
-    function topicFromPath(p){
-      const n = p.split('/').pop();
-      return n.replace(/\.xlsx$/i,'');
+    // Heuristic: detect numeric columns
+    function numericColumns(rows){
+      if(!rows.length) return [];
+      const cols = Object.keys(rows[0]);
+      return cols.filter(c => rows.some(r => r[c] !== null && r[c] !== '' && !isNaN(+r[c])));
     }
 
+    // Heuristic: detect likely date columns
+    function dateColumns(rows){
+      if(!rows.length) return [];
+      const cols = Object.keys(rows[0]);
+      const re = /date|time|period|month|year/i;
+      return cols.filter(c => re.test(c));
+    }
+
+    // Assign a stable id to each catalog item (works for local files and World Bank entries)
+    function itemId(it){
+      if (it.path) return it.path; // local file path is unique enough
+      if (it.type === 'worldbank'){
+        const indicator = it.indicator || '';
+        const countries = (it.countries || 'WLD').replace(/\s+/g,'');
+        const date = it.date || '';
+        return `worldbank:${indicator}:${countries}:${date}`;
+      }
+      return JSON.stringify(it);
+    }
+
+    // Load catalog.json
     async function loadCatalog(){
       const res = await fetch(CATALOG_URL);
-      if(!res.ok){
-        throw new Error('Missing data/catalog.json. Create it to list your files.');
-      }
-      const js = await res.json();
-      if(!Array.isArray(js)) throw new Error('catalog.json must be an array');
-      catalog = js.map(it => ({ path: it.path, topic: it.topic || topicFromPath(it.path) }));
+      if(!res.ok) throw new Error('Cannot fetch catalog.json');
+      let raw = await res.json();
+      if (!Array.isArray(raw)) throw new Error('catalog.json must be an array');
+      catalog = raw.map(it => ({...it, id: itemId(it)}));
+
       const dsSel = document.getElementById('datasetSel');
       dsSel.innerHTML = '';
-      catalog.forEach((it, idx) => {
-        const o = document.createElement('option');
-        o.value = String(idx);
-        o.textContent = it.topic;
-        dsSel.appendChild(o);
+      catalog.forEach(item => {
+        const opt = document.createElement('option');
+        opt.value = item.id;
+        opt.textContent = item.topic || item.path || item.indicator || item.id;
+        dsSel.appendChild(opt);
       });
-      // select all by default
+      // Preselect all by default
       for (let i=0;i<dsSel.options.length;i++){ dsSel.options[i].selected = true; }
     }
 
-    async function readXlsx(path, topic){
-      const res = await fetch(path);
-      if(!res.ok) throw new Error(`Failed to fetch ${path}`);
-      const ab = await res.arrayBuffer();
-      const wb = XLSX.read(ab, { type: 'array' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+    // Read XLSX/CSV or World Bank via fetch
+    async function readFile(entry){
+      const path = entry.path;
+      const topic = entry.topic || path || (entry.type==='worldbank' ? `WorldBank:${entry.indicator}` : '');
 
-      // Normalize & coerce types
-      return rows.map(r => ({
-        Country:   r.Country,
-        Indicator: r.Indicator,
-        Year:      Number(r.Year),
-        Unit:      r.Unit,
-        Value:     (r.Value === '' || r.Value === null) ? null : Number(r.Value),
-        source_file: path.split('/').pop(),
-        topic
-      }));
-    }
+      // --- World Bank API support ---
+      if (entry.type === 'worldbank'){
+        const indicator = entry.indicator; // e.g., "FP.CPI.TOTL.ZG"
+        const countries = entry.countries || 'WLD';
+        const date = entry.date || '';
+        const base = 'https://api.worldbank.org/v2/country';
+        const url = `${base}/${encodeURIComponent(countries)}/indicator/${encodeURIComponent(indicator)}?format=json&per_page=20000${date?`&date=${encodeURIComponent(date)}`:''}`;
+        const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+        if(!res.ok) throw new Error('World Bank API fetch failed');
+        const js = await res.json();
+        const data = Array.isArray(js) && js[1] ? js[1] : [];
+        return data.filter(d=>d).map(d => ({
+          country: (d.country && (d.country.value || d.country.id)) || '',
+          countryiso3: d.countryiso3code || (d.country && d.country.id) || '',
+          indicator: (d.indicator && d.indicator.id) || indicator,
+          indicator_name: (d.indicator && d.indicator.value) || '',
+          date: d.date || '',
+          value: d.value,
+          unit: d.unit || '',
+          decimal: d.decimal || '',
+          source_file: `worldbank:${indicator}`,
+          topic
+        }));
+      }
 
-    async function loadSelected(){
-      const dsSel = document.getElementById('datasetSel');
-      const idxs = Array.from(dsSel.selectedOptions).map(o => Number(o.value));
-      const picks = catalog.filter((_,i)=>idxs.includes(i));
-      const chunks = await Promise.all(picks.map(it => readXlsx(it.path, it.topic)));
-      allRows = chunks.flat();
-      return allRows;
-    }
+      // --- JSONL.GZ support ---
+      if ((entry.type === 'jsonl_gz') || (path && path.toLowerCase().endsWith('.jsonl.gz'))){
+        if(!path) return [];
+        const res = await fetch(path);
+        if(!res.ok) throw new Error(`Failed to fetch ${path}`);
+        const buf = await res.arrayBuffer();
+        // Decompress gzip -> text
+        const inflated = pako.ungzip(new Uint8Array(buf));
+        const text = new TextDecoder('utf-8').decode(inflated);
+        const lines = text.split(/
+?
+/).filter(Boolean);
+        const rows = [];
+        for (const line of lines){
+          try {
+        await ensureXLSX();
+            const obj = JSON.parse(line);
+            rows.push({ ...obj, source_file: path.split('/').pop(), topic });
+          } catch(e){
+            console.warn('Skipping invalid JSONL line', e);
+          }
+        }
+        return rows;
+      }
 
-    function populateFilters(rows){
-      const ctry = document.getElementById('fCountry');
-      const ind  = document.getElementById('fIndicator');
-      const unit = document.getElementById('fUnit');
-
-      const countries = uniq(rows.map(r=>r.Country)).sort();
-      const indicators= uniq(rows.map(r=>r.Indicator)).sort();
-      const units     = uniq(rows.map(r=>r.Unit)).sort();
-      const minY = Math.min(...rows.map(r=>r.Year).filter(Number.isFinite));
-      const maxY = Math.max(...rows.map(r=>r.Year).filter(Number.isFinite));
-
-      function fill(sel, values){
-        sel.innerHTML = '';
-        values.forEach(v => {
-          const o = document.createElement('option');
-          o.value = v; o.textContent = v;
-          sel.appendChild(o);
+      // --- Local CSV handling ---
+      if(path && path.toLowerCase().endsWith('.csv')){
+        const res = await fetch(path);
+        if(!res.ok) throw new Error(`Failed to fetch ${path}`);
+        const text = await res.text();
+        const lines = text.split(/
+?
+/).filter(Boolean);
+        const headers = lines[0].split(',').map(h=>h.trim());
+        return lines.slice(1).map(line => {
+          const cells = line.split(',');
+          const row = {};
+          headers.forEach((h,i)=> row[h] = cells[i] !== undefined ? cells[i] : '');
+          row.source_file = path.split('/').pop();
+          row.topic = topic;
+          return row;
         });
       }
-      fill(ctry, countries);
-      fill(ind, indicators);
-      fill(unit, units);
 
-      document.getElementById('yearMin').value = Number.isFinite(minY) ? minY : '';
-      document.getElementById('yearMax').value = Number.isFinite(maxY) ? maxY : '';
+      // --- Local XLSX handling ---
+      if (path){
+        const res = await fetch(path);
+        if(!res.ok) throw new Error(`Failed to fetch ${path}`);
+        const ab = await res.arrayBuffer();
+        const wb = XLSX.read(ab, { type: 'array' });
+        const sheetName = wb.SheetNames[0];
+        const ws = wb.Sheets[sheetName];
+        const json = XLSX.utils.sheet_to_json(ws, { defval: '' });
+        return json.map(r => ({...r, source_file: path.split('/').pop(), topic}));
+      }
+
+      return [];
+    }
+
+    // FIX: correct function signature
+    async function loadAll(selectedIds){
+      const chosen = catalog.filter(c => selectedIds.includes(c.id));
+      const chunks = await Promise.all(chosen.map(readFile));
+      combined = chunks.flat();
+      return combined;
+    }
+
+    function buildSelectOptions(id, values, includeBlank=false){
+      const sel = document.getElementById(id);
+      sel.innerHTML = '';
+      if(includeBlank){
+        const o = document.createElement('option'); o.value=''; o.textContent='—'; sel.appendChild(o);
+      }
+      values.forEach(v => { const o=document.createElement('option'); o.value=v; o.textContent=v; sel.appendChild(o); });
+    }
+
+    function refreshColumnSelectors(rows){
+      const cols = rows.length ? Object.keys(rows[0]) : [];
+      const numCols = numericColumns(rows);
+      const dCols = dateColumns(rows);
+
+      buildSelectOptions('xCol', uniq([...dCols, ...cols]));
+      buildSelectOptions('yCol', numCols);
+      buildSelectOptions('colorCol', ['','topic','source_file', ...cols]);
+      buildSelectOptions('pieLabelCol', uniq(cols));
+      buildSelectOptions('pieValueCol', numCols);
+
+      // Sensible defaults
+      document.getElementById('xCol').value = dCols[0] || cols[0] || '';
+      document.getElementById('yCol').value = numCols[0] || '';
+      document.getElementById('colorCol').value = '';
+      document.getElementById('pieLabelCol').value = cols.find(c=>c!=='source_file' && c!=='topic') || '';
+      document.getElementById('pieValueCol').value = numCols[0] || '';
+
+      // Filter column options
+      buildSelectOptions('filterCol', ['','topic','source_file', ...cols], true);
+      document.getElementById('filterCol').value = '';
+      buildSelectOptions('filterVals', [], false);
     }
 
     function applyFilters(rows){
-      const pick = (selId) =>
-        Array.from(document.getElementById(selId).selectedOptions).map(o=>o.value);
-
-      const fC = pick('fCountry');
-      const fI = pick('fIndicator');
-      const fU = pick('fUnit');
-      const yMin = Number(document.getElementById('yearMin').value);
-      const yMax = Number(document.getElementById('yearMax').value);
-
-      return rows.filter(r => {
-        if (fC.length && !fC.includes(String(r.Country))) return false;
-        if (fI.length && !fI.includes(String(r.Indicator))) return false;
-        if (fU.length && !fU.includes(String(r.Unit))) return false;
-        if (Number.isFinite(yMin) && r.Year < yMin) return false;
-        if (Number.isFinite(yMax) && r.Year > yMax) return false;
-        return true;
-      });
-    }
-
-    function aggregate(rows, xCol, colorCol, agg){
-      // Returns array of traces-ready objects: {keyX, keyC, y}
-      const key = (r) => `${r[xCol]}||${colorCol? r[colorCol] : ''}`;
-      const map = new Map();
-      for (const r of rows){
-        const k = key(r);
-        let obj = map.get(k);
-        if (!obj){
-          obj = { x: r[xCol], c: colorCol ? r[colorCol] : null, vals: [], years: [] };
-          map.set(k, obj);
-        }
-        if (r.Value !== null && !isNaN(r.Value)){
-          obj.vals.push(r.Value);
-          obj.years.push(r.Year);
-        }
-      }
-      const out = [];
-      map.forEach(o => {
-        let y = null;
-        if (o.vals.length){
-          if (agg === 'sum')  y = o.vals.reduce((a,b)=>a+b,0);
-          if (agg === 'mean') y = o.vals.reduce((a,b)=>a+b,0) / o.vals.length;
-          if (agg === 'last'){
-            // pick the value at the largest year for this group
-            const idx = o.years.indexOf(Math.max(...o.years));
-            y = o.vals[idx];
-          }
-        }
-        out.push({ x:o.x, c:o.c, y });
-      });
+      // Dataset selection is already applied in loadAll(); here we apply an additional column filter
+      const col = document.getElementById('filterCol').value;
+      const vals = Array.from(document.getElementById('filterVals').selectedOptions).map(o=>o.value);
+      let out = rows;
+      if (col && vals.length){ out = out.filter(r => vals.includes(String(r[col]))); }
       return out;
-    }
-
-    function renderChart(rows){
-      const type = document.getElementById('chartType').value;
-      const agg  = document.getElementById('agg').value;
-
-      if (type === 'pie'){
-        const labelCol = document.getElementById('pieLabelCol').value; // Country/Indicator/Unit
-        // Pie always aggregates Value
-        const groups = {};
-        rows.forEach(r => {
-          const k = String(r[labelCol]);
-          const v = Number(r.Value);
-          if (!isNaN(v)) groups[k] = (groups[k] || 0) + v;
-        });
-        const labels = Object.keys(groups);
-        const values = Object.values(groups);
-        Plotly.newPlot('chart', [{
-          type:'pie', labels, values, textinfo:'label+percent',
-          hovertemplate: '%{label}: %{value}<extra></extra>'
-        }], {
-          paper_bgcolor:'#121833', plot_bgcolor:'#121833', font:{color:'#f3f5ff'}
-        }, {displayModeBar:true, responsive:true});
-        return;
-      }
-
-      // bar / line / area
-      const xCol = document.getElementById('xCol').value;     // Year/Country/Indicator/Unit
-      const colorCol = document.getElementById('colorCol').value || null;
-
-      const aggRows = aggregate(rows, xCol, colorCol, agg);
-
-      let traces;
-      if (colorCol){
-        const cats = uniq(aggRows.map(r => r.c));
-        traces = cats.map(cat => {
-          const subset = aggRows.filter(r => r.c === cat);
-          return {
-            name: cat, x: subset.map(r=>r.x), y: subset.map(r=>r.y),
-            type: (type==='bar' ? 'bar' : 'scatter'),
-            mode: (type==='bar' ? undefined : 'lines+markers'),
-            fill: (type==='area' ? 'tozeroy' : undefined),
-            hovertemplate: `${xCol}=%{x}<br>${agg} Value=%{y}<extra>${colorCol}=${cat}</extra>`
-          };
-        });
-      } else {
-        traces = [{
-          x: aggRows.map(r=>r.x), y: aggRows.map(r=>r.y),
-          type: (type==='bar' ? 'bar' : 'scatter'),
-          mode: (type==='bar' ? undefined : 'lines+markers'),
-          fill: (type==='area' ? 'tozeroy' : undefined),
-          hovertemplate: `${xCol}=%{x}<br>${agg} Value=%{y}<extra></extra>`
-        }];
-      }
-
-      Plotly.newPlot('chart', traces, {
-        paper_bgcolor:'#121833', plot_bgcolor:'#121833', font:{color:'#f3f5ff'},
-        xaxis:{ title:xCol, automargin:true },
-        yaxis:{ title:`${agg} of Value`, automargin:true },
-        barmode: colorCol ? 'group' : 'relative',
-        margin:{t:30,r:20,b:50,l:60}
-      }, {displayModeBar:true, responsive:true});
     }
 
     function renderTable(rows){
       const table = document.getElementById('dataTable');
-      if (dt){ dt.destroy(); dt = null; table.innerHTML=''; }
-      if (!rows.length) return;
-
-      const headers = ['Country','Indicator','Year','Unit','Value','source_file','topic'];
+      const cols = rows.length ? Object.keys(rows[0]) : [];
+      // Clear previous
+      table.innerHTML = '';
+      if (dt) { dt.destroy(); dt = null; }
+      if (!rows.length){ return; }
+      // Build header
       const thead = document.createElement('thead');
       const thr = document.createElement('tr');
-      headers.forEach(h => { const th=document.createElement('th'); th.textContent=h; thr.appendChild(th); });
+      cols.forEach(c=>{ const th=document.createElement('th'); th.textContent=c; thr.appendChild(th); });
       thead.appendChild(thr);
       table.appendChild(thead);
-
+      // Build body
       const tbody = document.createElement('tbody');
-      rows.forEach(r => {
+      rows.forEach(r=>{
         const tr = document.createElement('tr');
-        headers.forEach(h => {
-          const td = document.createElement('td');
-          td.textContent = r[h] ?? '';
-          tr.appendChild(td);
-        });
+        cols.forEach(c=>{ const td=document.createElement('td'); td.textContent = r[c]; tr.appendChild(td); });
         tbody.appendChild(tr);
       });
       table.appendChild(tbody);
-
-      dt = new DataTable(table, { paging:true, pageLength:10, searchable:true, fixedHeight:false });
+      // Init DataTable
+      dt = new DataTable(table, { paging: true, pageLength: 10, searchable: true, fixedHeight: false });
     }
 
     function renderSources(rows){
@@ -389,55 +348,133 @@
       box.innerHTML = files.map(f=>`<span class="pill">${f}</span>`).join('');
     }
 
-    async function refreshAll(){
-      await loadSelected();
-      populateFilters(allRows);
-      const filtered = applyFilters(allRows);
-      renderChart(filtered);
-      renderTable(filtered);
-      renderSources(filtered);
+    function renderChart(rows){
+      const type = document.getElementById('chartType').value;
+      const xCol = document.getElementById('xCol').value;
+      const yCol = document.getElementById('yCol').value;
+      const colorCol = document.getElementById('colorCol').value;
+      const pieLabelCol = document.getElementById('pieLabelCol').value;
+      const pieValueCol = document.getElementById('pieValueCol').value;
+
+      const chartDiv = document.getElementById('chart');
+      if (!rows.length){ Plotly.newPlot(chartDiv, [], {paper_bgcolor:'#121833',plot_bgcolor:'#121833',font:{color:'#f3f5ff'}}); return; }
+
+      let figData = [];
+      let layout = { paper_bgcolor:'#121833', plot_bgcolor:'#121833', font:{color:'#f3f5ff'}, margin:{t:30,r:20,b:50,l:50} };
+
+      if (type === 'pie'){
+        if (!pieLabelCol || !pieValueCol) return;
+        const groups = {};
+        rows.forEach(r=>{
+          const k = String(r[pieLabelCol]);
+          const v = parseFloat(r[pieValueCol]);
+          if (!isNaN(v)) groups[k] = (groups[k]||0) + v;
+        });
+        figData.push({ type:'pie', labels:Object.keys(groups), values:Object.values(groups), textinfo:'label+percent', hovertemplate:`%{label}: %{value}<extra></extra>` });
+        layout.showlegend = true;
+      } else {
+        if (!xCol || !yCol) return;
+        const seriesKey = colorCol || '__single__';
+        const groups = {};
+        rows.forEach(r=>{
+          const s = String(r[seriesKey] ?? 'All');
+          const x = r[xCol];
+          const y = parseFloat(r[yCol]);
+          if (x!==undefined && !isNaN(y)){
+            if(!groups[s]) groups[s] = {x:[], y:[], text:[]};
+            groups[s].x.push(x);
+            groups[s].y.push(y);
+            groups[s].text.push(`Source: ${r.source_file}<br>Topic: ${r.topic}`);
+          }
+        });
+        Object.entries(groups).forEach(([name, g]) => {
+          const trace = { x:g.x, y:g.y, name: name==='__single__' ? undefined : name, text:g.text, hovertemplate:'%{x}: %{y}<br>%{text}<extra></extra>' };
+          if (type==='bar') trace.type='bar';
+          if (type==='line' || type==='area') { trace.type='scatter'; trace.mode='lines+markers'; if(type==='area'){ trace.fill='tozeroy'; } }
+          figData.push(trace);
+        });
+        layout.barmode = colorCol? 'group':'relative';
+        layout.xaxis = { title:xCol, automargin:true };
+        layout.yaxis = { title:yCol, automargin:true };
+      }
+      Plotly.newPlot(chartDiv, figData, layout, {displayModeBar:true,responsive:true});
     }
 
-    // Init
-    (async function(){
-      try {
-        await loadCatalog();
-        await refreshAll();
-      } catch(e){
-        console.error(e);
-        alert(e.message);
-      }
-    })();
+    function updateFilterValues(col){
+      const valsSel = document.getElementById('filterVals');
+      valsSel.innerHTML = '';
+      if(!col){ return; }
+      const values = uniq(combined.map(r => String(r[col]))).sort();
+      values.forEach(v => { const o=document.createElement('option'); o.value=v; o.textContent=v; valsSel.appendChild(o); });
+    }
 
-    // Events
+    // --- Tiny self-tests (debugging sanity checks) ---
+    function runSelfTests(){
+      console.groupCollapsed('Dashboard self-tests');
+      console.assert(typeof loadAll === 'function', 'loadAll should be defined');
+      const rows = [{a:1,b:'x'},{a:2,b:'y'}];
+      console.assert(numericColumns(rows).includes('a'), 'numericColumns detects numeric col');
+      console.assert(dateColumns([{date:'2024-01-01'}]).includes('date'), 'dateColumns detects date-like col');
+      console.groupEnd();
+    }
+
+    async function init(){
+      runSelfTests();
+      await loadCatalog();
+      const dsSel = document.getElementById('datasetSel');
+      const selectedIds = Array.from(dsSel.options).map(o=>o.value);
+      await loadAll(selectedIds);
+      refreshColumnSelectors(combined);
+      renderTable(combined);
+      renderSources(combined);
+      renderChart(combined);
+    }
+
+    // Event handlers
     document.getElementById('applyBtn').addEventListener('click', async () => {
-      // Re-filter (no need to re-load unless datasets changed)
-      const filtered = applyFilters(allRows);
-      renderChart(filtered);
+      const dsSel = document.getElementById('datasetSel');
+      const selectedIds = Array.from(dsSel.selectedOptions).map(o=>o.value);
+      await loadAll(selectedIds);
+      const filtered = applyFilters(combined);
       renderTable(filtered);
       renderSources(filtered);
+      renderChart(filtered);
     });
 
-    // Re-load when dataset selection changes
-    document.getElementById('datasetSel').addEventListener('change', refreshAll);
+    document.getElementById('filterCol').addEventListener('change', (e)=>{
+      updateFilterValues(e.target.value);
+    });
+
+    // Kickoff
+    init().catch(err => {
+      console.error(err);
+      alert('Failed to initialize dashboard. Check console and ensure data/catalog.json and files exist.');
+    });
   </script>
 
-  <!--
-  ========================= Sample data/catalog.json =========================
-
-  Create a file at: data/catalog.json   with contents similar to:
-
+  <!-- ---------------- Sample catalog.json (place under data/catalog.json) ----------------
   [
-    { "path": "data/AG.LND.EL5M.UR.ZS.xlsx" },
-    { "path": "data/AG.LND.TOTL.UR.K2.xlsx" },
-    { "path": "data/EN.POP.EL5M.UR.ZS.xlsx" },
-    { "path": "data/ER.GDP.FWTL.M3.KD.xlsx" },
-    { "path": "data/FP.WPI.TOTL.xlsx" }
+    { "topic": "Coast Members",     "path": "data/coast_members.xlsx" },
+    { "topic": "Canadians Overall",  "path": "data/canadians_overall.xlsx" },
+    { "topic": "Homeowners",         "path": "data/homeowners.csv" },
+
+    { "topic": "WorldBank • CPI inflation (annual %)",
+      "type": "worldbank",
+      "indicator": "FP.CPI.TOTL.ZG",
+      "countries": "CAN;USA;FRA;COD",
+      "date": "2015:2025"
+    },
+    { "topic": "WorldBank • GDP (current US$)",
+      "type": "worldbank",
+      "indicator": "NY.GDP.MKTP.CD",
+      "countries": "CAN;USA;COD;CIV;BEN;BFA;GHA;NLD",
+      "date": "2015:2024"
+    },
+    { "topic": "My Big Logs (JSONL.GZ)",
+      "type": "jsonl_gz",
+      "path": "data/logs_2025.jsonl.gz"  // each line is a JSON object
+    }
   ]
-
-  You can add all your uploaded Excel files; topic is auto-derived from filename.
-
-  ============================================================================
-  -->
+  -------------------------------------------------------------------------------------- -->
 </body>
 </html>
